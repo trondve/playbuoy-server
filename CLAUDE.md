@@ -179,8 +179,28 @@ The server detects and flags these anomalies:
 - **Review:** (TBD)
 - **Deployment:** (TBD)
 
+## 🔑 Infrastructure Credentials (Claude Code Memory)
+
+**IMPORTANT:** Credentials are stored in `.claude/credentials.json` (git-ignored, local only) for Claude Code persistence across sessions.
+
+### Database Access
+- **Host:** 192.168.140.7 (Raspberry Pi)
+- **Username:** playbuoyadmin
+- **Database:** playbuoy
+- **Connection string:** `postgresql://playbuoyadmin:<password>@192.168.140.7:5432/playbuoy`
+
+### API Authentication
+- **X-API-Key:** super-secret-key-123 (for buoy uploads)
+
+### External Services
+- **Cloudflare API Key:** Available in `.claude/credentials.json` for DNS management
+
+**Reference:** See `.claude/credentials.json` for all credentials. Regenerate and update this file if credentials are ever exposed.
+
 ## References
 
 - PlayBuoy Hardware Spec: `docs/buoy.md`
 - API Contract: `/upload` endpoint, see `docs/buoy.md` for payload format
 - Example Payload: See `docs/buoy.md` for complete JSON structure
+- Infrastructure Setup: `docs/setup.md`
+- Credentials (local, git-ignored): `.claude/credentials.json`

@@ -75,7 +75,10 @@
       "IoT backend",
       "time-series data",
       "environmental monitoring"
-    ]
+    ],
+    "credentials_file": ".claude/credentials.json (git-ignored, local storage only)",
+    "infrastructure_ip": "192.168.140.7 (Raspberry Pi)",
+    "database_url": "postgresql://playbuoyadmin:<password>@192.168.140.7:5432/playbuoy"
   },
   "hooks": {}
 }

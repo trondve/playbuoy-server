@@ -7,10 +7,11 @@ venv/
 env/
 ENV/
 
-# Environment variables
+# Environment variables & credentials
 .env
 .env.local
 .env.*.local
+.claude/credentials.json
 
 # IDE
 .vscode/
