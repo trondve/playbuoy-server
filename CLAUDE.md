@@ -11,15 +11,15 @@ This project implements a **Node.js/Express backend** for PlayBuoy to unify and 
 
 ### Current State
 - **Existing FastAPI server** running on Raspberry Pi using SQLite (21 test measurements)
-- **PostgreSQL database** configured but unused (orphaned tables: `buoy_data`, `alert_log`)
-- **Architecture task:** Consolidate on PostgreSQL and implement Node.js API server for better integration
+- **PostgreSQL database** configured but **unused** — will be deleted
+- **Strategy:** Enhance existing FastAPI/SQLite incrementally, add missing payload fields phase-by-phase
 
 ### Goals
-1. **Receive telemetry** from buoys via HTTP POST (`/upload` endpoint) — matching FastAPI contract
-2. **Store in PostgreSQL** with proper time-series partitioning (10-year retention)
-3. **Process alerts** (drift, charging issues, temperature anomalies)
-4. **Serve dashboards & APIs** for monitoring and historical analysis
-5. **Migrate existing data** from SQLite to PostgreSQL without data loss
+1. **Enhance FastAPI/SQLite** to accept full PlayBuoy JSON payload (docs/buoy.md)
+2. **Add missing fields** gradually (battery_percent, temp_trend, GPS metrics, etc.)
+3. **Maintain backwards compatibility** with existing buoys in the field
+4. **Prepare for future migration** to Node.js/PostgreSQL when needed
+5. **Avoid breaking changes** — all new fields are optional with sensible defaults
 
 ## Architecture
 
@@ -179,19 +179,14 @@ The server detects and flags these anomalies:
 - **Endpoints:** `/upload`, `/latest`, `/latest_all`, `/health`
 - **Authentication:** X-API-Key: `super-secret-key-123`
 - **CORS:** Configured for Wix frontend
+- **Status:** ✅ Production-ready, proven in field
 
 ### Data Currently Stored
 - **Measurements:** 21 test records (2025-07-06, 2-hour interval)
 - **Buoys:** 20 test node_ids (playbuoy-grinde, playbuoy-vigdar, etc.)
-- **Format:** Matches schema defined in `docs/buoy.md`
+- **Schema:** Partial buoy.md compliance (see docs/fastapi-upgrade-path.md)
 
-### ⚠️ Architecture Issue
-**Dual Database Problem:**
-- FastAPI uses **SQLite** (active)
-- PostgreSQL is configured but **unused** (orphaned `buoy_data` and `alert_log` tables)
-- Must consolidate: SQLite test data → PostgreSQL for production
-
-### FastAPI Upload Schema
+### FastAPI Upload Schema (Current)
 The existing FastAPI `/upload` endpoint accepts:
 ```json
 {
@@ -208,18 +203,47 @@ The existing FastAPI `/upload` endpoint accepts:
 }
 ```
 
-## Next Steps (Priority Order)
+### Missing Fields (To Be Added Incrementally)
+See `docs/fastapi-upgrade-path.md` for phased enhancement plan:
+- ⚠️ `battery_percent` (HIGH PRIORITY)
+- ⚠️ `temp_trend`, `temp_valid`
+- ⚠️ `gps`: { hdop, ttf }
+- ⚠️ `buoy`: { tilt, accel_rms }
+- 📋 `boot_count`, `altitude_gps`, `accuracy_gps`
 
-1. **Consolidate databases** — Decide: Keep SQLite or migrate to PostgreSQL?
-   - **Recommended:** Migrate to PostgreSQL (for Node.js integration)
-   - **Action:** Write migration script to transfer 21 test records
-2. **Design Node.js schema** — Create migrations for `buoys` and `measurements` tables
-3. **Implement Express API** — `/upload` endpoint compatible with FastAPI contract
-4. **Data validation** — Validate incoming payloads against schema rules
-5. **Alert processing** — Background job to detect anomalies
-6. **Write tests** — Unit + integration test suite
-7. **Gradual migration** — Run Node.js alongside FastAPI, test with real buoys
-8. **Deploy & sunset FastAPI** — Once Node.js proves stable
+## Next Steps (Incremental Enhancement Strategy)
+
+1. **Delete unused PostgreSQL** ✅
+   - Run: `bash tools/scripts/cleanup-postgresql.sh`
+   - Action: Drop `buoy_data` and `alert_log` tables (never used)
+
+2. **Phase 1.1: Add Battery Percent** (Week 1)
+   - Add `battery_percent` and `battery_change_since_last` columns to SQLite
+   - Update Pydantic models to accept these fields
+   - Deploy to Raspberry Pi, test with existing buoys
+
+3. **Phase 1.2: Add GPS Quality Metrics** (Week 2)
+   - Add `gps_hdop`, `gps_ttf` columns
+   - Update API models for `gps` object
+   - Test with real buoy data
+
+4. **Phase 1.3: Add Temperature Metadata** (Week 3)
+   - Add `temp_valid`, `temp_trend` columns
+   - Support temperature trend calculations
+
+5. **Phase 1.4: Add Buoy Diagnostics** (Week 4)
+   - Add `buoy_tilt`, `buoy_accel_rms` columns
+   - Support full `buoy` object
+
+6. **Phase 2.0: Full Compliance** (End of month)
+   - Complete buoy.md specification support
+   - All measurements fully structured
+   - Ready for production use with real buoys
+
+7. **Future: Migrate to Node.js** (After Phase 2)
+   - Once SQLite proves insufficient (10,000+ records, performance issues)
+   - Migrate to PostgreSQL with time-series optimization
+   - Implement Node.js/Express replacement
 
 ## Team & Responsibilities
 
