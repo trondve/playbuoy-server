@@ -1,210 +1,302 @@
 # PlayBuoy Raspberry Pi Configuration — Current State Analysis
 
 **Date:** 2026-04-20  
-**Status:** Initial infrastructure audit  
-**Updated:** Based on SSH reconnaissance
+**Status:** Infrastructure audit complete  
+**Updated:** Based on full application review
 
-## Infrastructure Summary
+## ⚠️ CRITICAL: Dual Database Issue
 
-### Operating System
-- **Device:** Raspberry Pi
-- **OS:** Debian-based Linux
-- **Storage:** 29GB total, 2.9GB used (11%)
-- **Python Version:** 3.11
+**FINDING:** The system has a **database architecture mismatch**:
+
+1. **SQLite (Active)** — `main.py` uses `/home/playbuoyadmin/playbuoy-server/playbuoy.db`
+2. **PostgreSQL (Defined)** — `database.py` configures PostgreSQL but **NOT USED** by main.py
+
+This means:
+- ✅ **SQLite has the active measurements** (21 test records from Jul 6, 2025)
+- ❌ **PostgreSQL tables exist but are unused** (orphaned schema)
 
 ---
 
-## PostgreSQL Database
+## PostgreSQL Database (Unused in Production)
 
 ### Status
-- **Service:** `postgresql.service` (active, running since 13:34:09)
+- **Service:** `postgresql.service` (active, running)
 - **Version:** PostgreSQL 15
-- **Config:** `/etc/postgresql/15/main/postgresql.conf`
 - **Port:** 5432
-- **Listen Address:** localhost (127.0.0.1 only — not network accessible)
+- **Listen Address:** localhost (127.0.0.1 only)
 
-### Database Structure
-- **Database Name:** `playbuoy`
-- **Database Owner:** `playbuoyuser` (⚠️ Not `playbuoyadmin`)
-- **Encoding:** UTF-8, en_GB.UTF-8 locale
+### Database
+- **Name:** `playbuoy`
+- **Owner:** `playbuoyuser`
+- **Credentials:** 
+  - User: `playbuoyuser`
+  - Password: `XaKwwtYBKEiwQzmDCANDycUafUjA`
 
-### Tables
-
-#### `buoy_data` (Measurements)
+### Unused Tables
+#### `buoy_data` (Orphaned)
 ```
-Columns:
-  - id (PRIMARY KEY, integer, auto-increment)
-  - node_id (character varying) — Buoy identifier
-  - firmware_version (character varying)
-  - timestamp (timestamp without time zone)
-  - latitude (double precision)
-  - longitude (double precision)
-  - altitude (double precision)
-  - accuracy (double precision)
-  - temperature_c (double precision) — Water temperature
-  - battery_percent (double precision)
-  - battery_voltage (double precision)
-  - wave_height_m (double precision)
-  - wave_period_s (double precision)
-  - wave_direction (character varying)
-  - wave_power (double precision)
-  - tide (character varying)
-  - alerts (JSON)
-
-Indexes:
-  - id (PRIMARY KEY, btree)
-  - node_id (btree)
+Columns: id, node_id, firmware_version, timestamp, latitude, longitude, 
+         altitude, accuracy, temperature_c, battery_percent, battery_voltage,
+         wave_height_m, wave_period_s, wave_direction, wave_power, tide, alerts
 ```
 
-#### `alert_log` (Alert History)
+#### `alert_log` (Orphaned)
 ```
-Columns:
-  - id (PRIMARY KEY, integer, auto-increment)
-  - node_id (character varying)
-  - timestamp (timestamp without time zone)
-  - alert_type (character varying)
-  - alert_payload (JSON)
-
-Indexes:
-  - id (PRIMARY KEY, btree)
-  - node_id (btree)
+Columns: id, node_id, timestamp, alert_type, alert_payload
 ```
-
-### Measurement Statistics
-*To be populated with:*
-- Total measurement count
-- Date range (first & latest measurement)
-- Active buoys (distinct node_ids)
 
 ---
 
-## FastAPI API Server
-
-### Status
-- **Service Name:** `playbuoy-api.service`
-- **Status:** active (running)
-- **Started:** Mon 2026-04-20 13:34:03 CEST (7h ago)
-- **Process:** Uvicorn
-
-### Running Instances
-| PID | Binding | Status |
-|-----|---------|--------|
-| 494 | `0.0.0.0:8000` | All interfaces (external access) |
-| 495 | `127.0.0.1:8000` | Localhost only (internal) |
-
-**Note:** Two uvicorn processes running simultaneously — investigate if this is intentional or misconfiguration.
-
-### Network Configuration
-- **Port:** 8000 (HTTP, not HTTPS)
-- **Protocol:** HTTP (over Cloudflare tunnel for HTTPS)
-- **Network Access:** Currently listening on all interfaces
-
-### Application Structure
-- **Location:** `/home/playbuoyadmin/playbuoy-server/`
-- **Owner:** `playbuoyadmin` user
-- **Python Environment:** Virtual environment at `/venv/`
+## FastAPI Application (Active SQLite)
 
 ### Application Files
 ```
 /home/playbuoyadmin/playbuoy-server/
-├── main.py           — FastAPI application entry point
-├── database.py       — Database connection & ORM models
-├── models.py         — Pydantic/data models
-├── requirements.txt  — Python dependencies
-└── venv/             — Python 3.11 virtual environment
+├── main.py              — FastAPI app (PRIMARY - uses SQLite)
+├── database.py          — PostgreSQL config (UNUSED)
+├── models.py            — SQLAlchemy ORM (UNUSED)
+├── requirements.txt     — Dependencies
+├── playbuoy.db          — SQLite database (94 KB, 21 records)
+├── venv/                — Python 3.11 virtualenv
+└── [backups]            — Old .db files
 ```
 
-### Systemd Service Configuration
-*Location:* `/etc/systemd/system/playbuoy-api.service`  
-*Details:* To be reviewed
+### FastAPI Architecture
 
-### Logs
-- **Recent logs:** Application startup complete
-- **Status:** No errors visible
-- **Log location:** Via `journalctl -u playbuoy-api`
+#### Technology Stack
+- **Framework:** FastAPI 0.115.14
+- **Database:** SQLite 3 (playbuoy.db)
+- **Async Runtime:** Uvicorn 0.35.0
+- **Python:** 3.11
+- **Authentication:** X-API-Key header
+- **CORS:** Enabled for Wix frontend
+
+#### API Endpoints
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/` | GET | ❌ | Health check |
+| `/health` | GET | ❌ | Database connectivity |
+| `/upload` | POST | ✅ API Key | Ingest buoy telemetry |
+| `/latest` | GET | ✅ API Key | Get latest for one buoy |
+| `/latest_all` | GET | ✅ API Key | Get latest from all buoys |
+
+#### Request/Response Model
+**Upload Payload** (Pydantic BaseModel):
+```python
+{
+  "nodeId": "playbuoy-grinde",      # Stored as: playbuoy_grinde
+  "version": "2.5.3",
+  "timestamp": 1625591400,           # Unix epoch
+  "lat": 59.4123,
+  "lon": 5.2456,
+  "temp": 12.5,
+  "battery": 3.92,
+  "wave": {
+    "height": 0.45,
+    "period": 4.2,
+    "direction": "N/A",
+    "power": 2.1
+  },
+  "alerts": {
+    "anchorDrift": false,
+    "chargingIssue": false,
+    "tempSpike": false,
+    "overTemp": false,
+    "uploadFailed": false
+  },
+  // Optional fields
+  "name": "Litla Grindevatnet",
+  "battery_precal": 3.90,
+  "battery_cal_factor": 1.05,
+  "temp_valid": true,
+  "uptime": 598,
+  "reset_reason": "deep_sleep_wakeup",
+  "rtc": { "waterTemp": 12.3 },
+  "net": {
+    "operator": "Telenor",
+    "apn": "internet.telenor.no",
+    "ip": "10.45.67.123",
+    "signal": 18
+  },
+  "hours_to_sleep": 2,
+  "next_wake_utc": 1625598600,
+  "battery_change_since_last": 2.0
+}
+```
+
+**Success Response:**
+```json
+{ "status": "ok" }
+```
+
+### SQLite Schema (Actual Storage)
+The `playbuoy.db` SQLite database stores data in a `data` table with columns:
+```
+node_id, firmware_version, timestamp, latitude, longitude,
+wave_height, wave_period, wave_direction, wave_power,
+water_temperature, battery_voltage,
+name, tide_current_height,
+battery_precal, battery_cal_factor, temp_valid,
+uptime, reset_reason,
+rtc_water_temp,
+net_operator, net_apn, net_ip, net_signal,
+alert_anchor_drift, alert_charging_issue, alert_temp_spike, 
+alert_over_temp, alert_upload_failed,
+hours_to_sleep, next_wake_utc, battery_change_since_last
+```
+
+### Security Features
+- ✅ API Key validation (X-API-Key header)
+- ✅ CORS middleware (Wix domains only)
+- ✅ Security headers (HSTS, X-Frame-Options, CSP)
+- ✅ OpenAPI schema with auth integration
+- ✅ HTTPS via Cloudflare tunnel
+
+### Systemd Service
+**File:** `/etc/systemd/system/playbuoy-api.service`
+```ini
+[Unit]
+Description=PlayBuoy FastAPI backend
+After=network.target
+
+[Service]
+User=playbuoyadmin
+Group=playbuoyadmin
+WorkingDirectory=/home/playbuoyadmin/playbuoy-server
+ExecStart=/home/playbuoyadmin/playbuoy-server/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+---
+
+## Current Data
+
+### Measurement Statistics
+| Metric | Value |
+|--------|-------|
+| Total measurements | 21 |
+| Unique buoys | 20 |
+| Date range | 2025-07-06 14:00 — 2025-07-06 16:00 |
+| Database size | 94 KB |
+
+### Active Buoys (Test Data)
+```
+playbuoy-vigdar (1), playbuoy-001 (2), playbuoy-draga (1),
+playbuoy-sandve (1), playbuoy-akre (1), playbuoy-notaflot (1),
+playbuoy-storavat (1), playbuoy-skeisvat (1), playbuoy-stemne (1),
+playbuoy-vatnakv (1), playbuoy-lindoy (1), playbuoy-kvalsvik (1),
+playbuoy-asalvika (1), playbuoy-grinde (1), playbuoy-litla (1),
+playbuoy-tuastad (1), playbuoy-aksnes (1), playbuoy-fotvann (1),
+playbuoy-eivindsv (1), playbuoy-grindafj (1)
+```
+
+**Note:** All measurements from 2025-07-06 (test data, not production)
+
+---
+
+## Node ID Handling
+
+### Normalization Rules
+- **Storage:** Converts hyphens → underscores, lowercase
+  - Input: `playbuoy-grinde` → Stored: `playbuoy_grinde`
+- **Query:** Accepts both formats, normalizes for lookup
+  - `/latest?node_id=playbuoy-grinde` or `playbuoy_grinde` both work
 
 ---
 
 ## Cloudflare Integration
 
 ### Tunnel
-- **Process:** `cloudflared` (running)
+- **Service:** `cloudflared` (running)
 - **Port:** 20241 (localhost only)
-- **Purpose:** HTTPS tunnel to external DNS (playbuoyapi.no)
+- **Purpose:** HTTPS tunnel for `playbuoyapi.no` domain
 
 ---
 
-## Connectivity Analysis
+## Credentials Summary
 
-### Database Accessibility
-- ✅ PostgreSQL listening on `127.0.0.1:5432` (localhost)
-- ✅ PostgreSQL listening on `[::1]:5432` (IPv6 localhost)
-- ❌ **NOT** accessible from remote (no 0.0.0.0 binding)
-- ⚠️ **Credentials Issue:** 
-  - User told us: `playbuoyadmin` with password `@6Kv2pUQE2HoPZfT.PhozJVPcxFC`
-  - Actual DB owner: `playbuoyuser`
-  - Requires clarification
+### Application Configuration
+| Component | Value | Location |
+|-----------|-------|----------|
+| API Key | `super-secret-key-123` | `main.py` line 18 (environment variable fallback) |
+| SQLite DB | `playbuoy.db` | `main.py` line 185 |
+| PostgreSQL (unused) | `postgresql://playbuoyuser:XaKwwtYBKEiwQzmDCANDycUafUjA@localhost/playbuoy` | `database.py` line 5 |
 
-### API Accessibility
-- ✅ FastAPI listening on `0.0.0.0:8000` (all interfaces)
-- ✅ Cloudflare tunnel routing HTTPS traffic
-- ⚠️ Two uvicorn instances running (investigate redundancy)
+### SSH Access
+| User | Host | Purpose |
+|------|------|---------|
+| `playbuoyadmin` | `192.168.140.7` | Application/system management |
 
 ---
 
-## Credentials & Authentication
+## Deployment Status
 
-### Known Credentials
-| Service | User | Location | Status |
-|---------|------|----------|--------|
-| PostgreSQL | playbuoyuser | Local DB | ✅ Active |
-| SSH | playbuoyadmin | Raspberry Pi | ✅ Active |
-| API Key | super-secret-key-123 | FastAPI | ✅ Stored in project |
-| Cloudflare | roJKZfZmQMLhALNDYgBVtnpbjRXt | API Key | ✅ Stored in project |
+### Running Processes
+```
+PID    Process                                        Port
+494    uvicorn main:app --host 0.0.0.0 --port 8000  8000 (all interfaces)
+495    uvicorn main:app --host 127.0.0.1 --port 8000 8000 (localhost)
+526    postgres                                       5432 (localhost only)
+548    cloudflared                                    20241 (localhost only)
+```
 
-### ⚠️ Authentication Gaps
-1. **PostgreSQL User Mismatch:** 
-   - Expected: `playbuoyadmin`
-   - Actual: `playbuoyuser`
-   - Needs: Clarify remote vs. local access methods
-
-2. **Database Access from Node.js Server:**
-   - The FastAPI app uses `playbuoyuser` locally
-   - Our Node.js server needs different credentials for remote access
-   - Stored in `.claude/credentials.json` (user: `playbuoyadmin`)
+⚠️ **Note:** Two uvicorn processes running — potential redundancy or load balancing.
 
 ---
 
-## Pending Information
+## Issues & Recommendations
 
-*Waiting for output from Raspberry Pi:*
+### 1. ⚠️ Database Architecture Mismatch
+**Problem:** SQLite (main.py) vs PostgreSQL (database.py) confusion  
+**Impact:** Difficult to migrate, unclear data ownership  
+**Action:** 
+- [ ] Clarify: Is this intentional dual-write or legacy code?
+- [ ] Decision: Consolidate on **PostgreSQL** (for Node.js server integration)
+- [ ] Plan: Migrate 21 test records from SQLite → PostgreSQL
 
-1. ✅ Application code (`main.py`, `database.py`, `models.py`)
-2. ✅ Dependencies (`requirements.txt`)
-3. ✅ Systemd service configuration
-4. ✅ Directory structure
-5. ✅ Database measurement statistics
-6. ✅ Git repository status
-7. ✅ Environment variables (`.env`)
+### 2. ⚠️ No .env Configuration
+**Problem:** API key hardcoded in `main.py` (line 18)  
+**Impact:** Requires code change to update credentials  
+**Action:** Create `.env` file and load via `python-dotenv`
+
+### 3. ⚠️ Unused SQLAlchemy Code
+**Problem:** `database.py` and `models.py` define PostgreSQL ORM but never instantiated  
+**Impact:** Dead code, maintenance burden  
+**Action:** Either use or remove
+
+### 4. ⚠️ Two Uvicorn Processes
+**Problem:** PID 494 (0.0.0.0:8000) and PID 495 (127.0.0.1:8000) both running  
+**Impact:** Confusing, unclear if intentional  
+**Action:** Investigate systemd service — may need deduplication
+
+### 5. ✅ Cloudflare Tunnel
+**Status:** Properly configured for HTTPS  
+**Note:** Provides secure external access
 
 ---
 
-## Next Steps
+## Next Steps (Priority Order)
 
-Once additional data is provided:
-
-1. **Document the FastAPI application architecture** — Routes, validation, error handling
-2. **Validate schema alignment** — Compare with CLAUDE.md specifications
-3. **Identify migration needs** — Bridge Python/FastAPI backend with Node.js implementation
-4. **Update credentials management** — Clarify `playbuoyadmin` vs. `playbuoyuser` usage
-5. **Review current API implementation** — Check if `/upload` endpoint exists and how it works
-6. **Plan data migration strategy** — Ensure existing measurements are preserved
+1. **Clarify database usage** — Is PostgreSQL intentional or legacy?
+2. **Consolidate on PostgreSQL** — For Node.js server compatibility
+3. **Migrate test data** — SQLite (21 records) → PostgreSQL
+4. **Implement .env configuration** — Externalize credentials
+5. **Remove duplicate uvicorn** — Streamline startup
+6. **Align schema** — Ensure Node.js server matches FastAPI schema
 
 ---
 
 ## References
 
-- Database: `playbuoy` on `192.168.140.7:5432`
-- API: Listening on `0.0.0.0:8000`
-- Application: `/home/playbuoyadmin/playbuoy-server/`
-- Credentials stored: `.claude/credentials.json`
+- **FastAPI app:** `/home/playbuoyadmin/playbuoy-server/main.py`
+- **Database config:** `/home/playbuoyadmin/playbuoy-server/database.py`
+- **Service:** `/etc/systemd/system/playbuoy-api.service`
+- **Active database:** `/home/playbuoyadmin/playbuoy-server/playbuoy.db` (SQLite)
+- **Postgres:** `192.168.140.7:5432` (playbuoy)
+- **API endpoint:** `http://192.168.140.7:8000` or `https://playbuoyapi.no`
+

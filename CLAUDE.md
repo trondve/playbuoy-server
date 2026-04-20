@@ -7,12 +7,19 @@
 
 ## Project Overview
 
-This project implements the backend infrastructure for PlayBuoy—a fleet of permanently sealed, solar-powered IoT buoys deployed in Norwegian lakes. The server:
+This project implements a **Node.js/Express backend** for PlayBuoy to unify and enhance the existing FastAPI infrastructure.
 
-1. **Receives telemetry** from buoys via HTTP POST (`/upload` endpoint)
-2. **Validates & stores** measurements in a time-series database (10-year retention)
-3. **Processes alerts** (drift, charging issues, temperature anomalies)
-4. **Serves dashboards & APIs** for monitoring and historical analysis
+### Current State
+- **Existing FastAPI server** running on Raspberry Pi using SQLite (21 test measurements)
+- **PostgreSQL database** configured but unused (orphaned tables: `buoy_data`, `alert_log`)
+- **Architecture task:** Consolidate on PostgreSQL and implement Node.js API server for better integration
+
+### Goals
+1. **Receive telemetry** from buoys via HTTP POST (`/upload` endpoint) — matching FastAPI contract
+2. **Store in PostgreSQL** with proper time-series partitioning (10-year retention)
+3. **Process alerts** (drift, charging issues, temperature anomalies)
+4. **Serve dashboards & APIs** for monitoring and historical analysis
+5. **Migrate existing data** from SQLite to PostgreSQL without data loss
 
 ## Architecture
 
@@ -163,15 +170,56 @@ The server detects and flags these anomalies:
 - `docs/decisions/` — ADRs (Architecture Decision Records) for major choices (TBD)
 - `docs/runbooks/` — Operational guides (deployment, scaling, debugging) (TBD)
 
-## Next Steps
+## Existing FastAPI Server (Raspberry Pi)
 
-1. **Set up repository structure** — Create `src/`, `tests/`, `tools/`, `.claude/` directories
-2. **Choose tech stack** — Node.js + Express + PostgreSQL or Python + FastAPI
-3. **Design database schema** — Create migration files for `buoys` and `measurements` tables
-4. **Implement API server** — `/upload` endpoint with validation & storage
-5. **Add alert processing** — Background job to detect & flag anomalies
+### Current Implementation
+- **Location:** `/home/playbuoyadmin/playbuoy-server/main.py`
+- **Database:** SQLite (`playbuoy.db`, 94 KB, 21 test records)
+- **Port:** 8000 (via uvicorn)
+- **Endpoints:** `/upload`, `/latest`, `/latest_all`, `/health`
+- **Authentication:** X-API-Key: `super-secret-key-123`
+- **CORS:** Configured for Wix frontend
+
+### Data Currently Stored
+- **Measurements:** 21 test records (2025-07-06, 2-hour interval)
+- **Buoys:** 20 test node_ids (playbuoy-grinde, playbuoy-vigdar, etc.)
+- **Format:** Matches schema defined in `docs/buoy.md`
+
+### ⚠️ Architecture Issue
+**Dual Database Problem:**
+- FastAPI uses **SQLite** (active)
+- PostgreSQL is configured but **unused** (orphaned `buoy_data` and `alert_log` tables)
+- Must consolidate: SQLite test data → PostgreSQL for production
+
+### FastAPI Upload Schema
+The existing FastAPI `/upload` endpoint accepts:
+```json
+{
+  "nodeId": "playbuoy-grinde",
+  "version": "2.5.3",
+  "timestamp": 1625591400,
+  "lat": 59.4123, "lon": 5.2456,
+  "temp": 12.5, "battery": 3.92,
+  "wave": { "height": 0.45, "period": 4.2, "direction": "N/A", "power": 2.1 },
+  "alerts": { "anchorDrift": false, "chargingIssue": false, ... },
+  "rtc": { "waterTemp": 12.3 },
+  "net": { "operator": "Telenor", "apn": "...", "ip": "...", "signal": 18 },
+  "hours_to_sleep": 2, "next_wake_utc": 1625598600
+}
+```
+
+## Next Steps (Priority Order)
+
+1. **Consolidate databases** — Decide: Keep SQLite or migrate to PostgreSQL?
+   - **Recommended:** Migrate to PostgreSQL (for Node.js integration)
+   - **Action:** Write migration script to transfer 21 test records
+2. **Design Node.js schema** — Create migrations for `buoys` and `measurements` tables
+3. **Implement Express API** — `/upload` endpoint compatible with FastAPI contract
+4. **Data validation** — Validate incoming payloads against schema rules
+5. **Alert processing** — Background job to detect anomalies
 6. **Write tests** — Unit + integration test suite
-7. **Deploy** — Docker, CI/CD pipeline, monitoring
+7. **Gradual migration** — Run Node.js alongside FastAPI, test with real buoys
+8. **Deploy & sunset FastAPI** — Once Node.js proves stable
 
 ## Team & Responsibilities
 
