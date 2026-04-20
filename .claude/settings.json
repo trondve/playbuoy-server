@@ -1,0 +1,81 @@
+{
+  "name": "PlayBuoy Database Server",
+  "description": "Backend infrastructure for PlayBuoy IoT buoys — telemetry ingestion, storage, and API",
+  "version": "1.0.0",
+  "permissions": {
+    "allowlist": [
+      {
+        "tool": "Bash",
+        "description": "Read-only file operations",
+        "operations": [
+          "ls",
+          "find",
+          "grep",
+          "cat",
+          "head",
+          "tail",
+          "pwd"
+        ]
+      },
+      {
+        "tool": "Bash",
+        "description": "Development commands",
+        "operations": [
+          "npm install",
+          "npm test",
+          "npm run",
+          "npm start",
+          "node",
+          "python",
+          "pip install",
+          "pytest"
+        ]
+      },
+      {
+        "tool": "Bash",
+        "description": "Database and migrations",
+        "operations": [
+          "psql",
+          "pg_dump",
+          "flyway",
+          "alembic"
+        ]
+      },
+      {
+        "tool": "Bash",
+        "description": "Git operations",
+        "operations": [
+          "git status",
+          "git add",
+          "git commit",
+          "git push",
+          "git pull",
+          "git fetch",
+          "git log",
+          "git diff",
+          "git branch"
+        ]
+      },
+      {
+        "tool": "Bash",
+        "description": "Docker operations",
+        "operations": [
+          "docker build",
+          "docker run",
+          "docker ps",
+          "docker logs"
+        ]
+      }
+    ]
+  },
+  "context": {
+    "stack": "Node.js/Express + PostgreSQL (to be confirmed)",
+    "codebase": "time-series database + REST API for IoT telemetry",
+    "domains": [
+      "IoT backend",
+      "time-series data",
+      "environmental monitoring"
+    ]
+  },
+  "hooks": {}
+}
