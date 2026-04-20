@@ -129,11 +129,23 @@ The server detects and flags these anomalies:
 - **Runtime:** Node.js 18+ or Python 3.9+ (TBD)
 - **Database:** PostgreSQL 13+ with TimescaleDB extension (optional, for hypertable partitioning)
 - **Container:** Docker (dockerfile in `tools/docker/`)
+- **Existing Infrastructure:**
+  - Database: Raspberry Pi (IP: 192.168.140.7)
+  - SSH user: `playbuoyadmin`
+  - Cloudflare managed DNS
 - **Environment variables:**
-  - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-  - `API_KEY` (the shared secret)
+  - `DB_HOST` — Database hostname/IP
+  - `DB_PORT` — Database port (default 5432)
+  - `DB_NAME` — Database name
+  - `DB_USER` — Database user
+  - `DB_PASSWORD` — PostgreSQL password (⚠️ keep in .env, never in code)
+  - `API_KEY` — Shared secret for X-API-Key header
+  - `CLOUDFLARE_API_KEY` — For DNS management (⚠️ keep in .env)
   - `API_PORT` (default 3000)
   - `LOG_LEVEL` (debug|info|warn|error)
+  - `SSH_USER` — SSH username for Raspberry Pi admin access
+
+**⚠️ SECURITY:** All credentials stored in `.env` (git-ignored), never committed to repository.
 
 ## Performance Targets
 
