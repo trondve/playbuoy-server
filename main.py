@@ -367,3 +367,30 @@ def latest_all(_: str = Security(verify_api_key)):
     finally:
         if conn:
             conn.close()
+
+@app.get("/history")
+def history_data(node_id: str, days: int = 365, limit: int = 10000, _: str = Security(verify_api_key)):
+    normalized = normalize_for_query(node_id)
+    conn = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cutoff_ts = int(time.time()) - (days * 86400)
+        cur.execute(
+            """
+            SELECT *
+            FROM data
+            WHERE lower(node_id) = ? AND timestamp >= ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (normalized, cutoff_ts, limit),
+        )
+        rows = cur.fetchall()
+        result = [map_row_full(r) for r in rows]
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Query error: {e}")
+    finally:
+        if conn:
+            conn.close()
